@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, RotateCcw, Download, Trash2, Send, Coffee, Brain, Settings, X } from 'lucide-react';
+import { saveAs } from 'file-saver';
 
 const FocusStream = () => {
   // Configuration State
@@ -163,41 +164,52 @@ const FocusStream = () => {
     if (entries.length === 0) {
       fileContent += "(No entries recorded yet)\n";
     } else {
-      // Create a copy for export to ensure original state is untouched
       [...entries].reverse().forEach(entry => {
         fileContent += `[${entry.time}] (${entry.sessionType.toUpperCase()}) ${entry.text}\n`;
       });
     }
 
-    try {
-      const filename = `focus-stream-log-${now.toISOString().split('T')[0]}.txt`;
-      // Use File constructor for better metadata support
-      const file = new File([fileContent], filename, { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(file);
+    const filename = `focus-stream-log-${now.toISOString().split('T')[0]}.txt`;
+    console.log(`[DEBUG] Preparing file: ${filename}`);
 
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename; // This is the hint the browser usually needs
+    // Create a Blob with explicit text/plain type and BOM for better recognition
+    const BOM = '\uFEFF';  // UTF-8 BOM helps some programs identify the file
+    const blob = new Blob([BOM + fileContent], { type: 'text/plain;charset=utf-8' });
 
-      // Make it visible but tiny (some browsers block hidden clicks)
-      a.style.position = 'fixed';
-      a.style.left = '-9999px';
-      a.style.top = '0';
-      document.body.appendChild(a);
-
-      console.log(`[DEBUG] attempting download of: ${filename}`);
-      a.click();
-
-      // Extended timeout to ensure download starts
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        console.log('[DEBUG] Cleanup done');
-      }, 2000);
-    } catch (err) {
-      console.error('[DEBUG] Export error:', err);
-      alert('Export failed: ' + err.message);
+    // Use msSaveBlob for IE/Edge if available
+    if (navigator.msSaveBlob) {
+      navigator.msSaveBlob(blob, filename);
+      console.log('[DEBUG] Download via msSaveBlob');
+      return;
     }
+
+    // Standard approach with longer delay before cleanup
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    // Set download attribute BEFORE href (order matters in some browsers)
+    link.download = filename;
+    link.href = url;
+
+    // Make link part of document flow 
+    link.style.position = 'absolute';
+    link.style.left = '-9999px';
+    link.textContent = 'Download';  // Some browsers need content
+    document.body.appendChild(link);
+
+    // Small delay to ensure DOM is ready
+    requestAnimationFrame(() => {
+      link.click();
+
+      // Much longer cleanup delay - Chrome needs time to start download
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        console.log('[DEBUG] Cleanup complete');
+      }, 5000);
+    });
+
+    console.log('[DEBUG] Download initiated');
   }, [entries]);
 
   // Formatting & Progress
@@ -220,8 +232,8 @@ const FocusStream = () => {
             }`}>
             {/* Icon */}
             <div className={`w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center ${completedMode === 'focus'
-                ? 'bg-gradient-to-br from-rose-100 to-orange-100'
-                : 'bg-gradient-to-br from-emerald-100 to-teal-100'
+              ? 'bg-gradient-to-br from-rose-100 to-orange-100'
+              : 'bg-gradient-to-br from-emerald-100 to-teal-100'
               }`}>
               {completedMode === 'focus'
                 ? <Brain size={40} className="text-rose-500" />
@@ -248,7 +260,8 @@ const FocusStream = () => {
               <button
                 onClick={() => {
                   exportLogs();
-                  handleCloseCompletionPopup();
+                  // Delay popup close to ensure download properly initiates
+                  setTimeout(handleCloseCompletionPopup, 300);
                 }}
                 className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
               >
@@ -259,8 +272,8 @@ const FocusStream = () => {
               <button
                 onClick={handleCloseCompletionPopup}
                 className={`w-full py-3 text-white rounded-xl font-medium transition-colors active:scale-95 transform ${completedMode === 'focus'
-                    ? 'bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600'
-                    : 'bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600'
+                  ? 'bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600'
+                  : 'bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600'
                   }`}
               >
                 Got it!
