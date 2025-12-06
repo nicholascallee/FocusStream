@@ -13,25 +13,85 @@ const FocusStream = () => {
   const [mode, setMode] = useState('focus'); // 'focus' or 'break'
   const [timeLeft, setTimeLeft] = useState(config.focus * 60);
   const [isActive, setIsActive] = useState(false);
-  
+
   // Data State
   const [entries, setEntries] = useState([]);
   const [inputText, setInputText] = useState('');
-  
-  const timerRef = useRef(null);
 
-  // Timer Logic
+  // Completion Popup State
+  const [showCompletionPopup, setShowCompletionPopup] = useState(false);
+  const [completedMode, setCompletedMode] = useState(null);
+
+  const timerRef = useRef(null);
+  const isActiveRef = useRef(isActive);
+  const audioRef = useRef(null);
+
+  // Keep ref in sync
   useEffect(() => {
+    isActiveRef.current = isActive;
+  }, [isActive]);
+
+  // Play alarm sound using Web Audio API
+  const playAlarmSound = () => {
+    // Create audio context for alarm
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    const playBeep = (startTime, frequency) => {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'sine';
+
+      gainNode.gain.setValueAtTime(0.3, startTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + 0.5);
+
+      oscillator.start(startTime);
+      oscillator.stop(startTime + 0.5);
+    };
+
+    // Play a pleasant three-tone chime
+    const now = audioContext.currentTime;
+    playBeep(now, 523.25);        // C5
+    playBeep(now + 0.2, 659.25);  // E5
+    playBeep(now + 0.4, 783.99);  // G5
+  };
+
+  // Track if timer was ever started (to distinguish initial 0 from completion)
+  const timerStartedRef = useRef(false);
+
+  // Timer countdown logic
+  useEffect(() => {
+    let intervalId = null;
+
     if (isActive && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
+      timerStartedRef.current = true;
+      intervalId = setInterval(() => {
+        setTimeLeft((prev) => {
+          const next = prev - 1;
+          if (next === 0) {
+            // Timer completed - use setTimeout to escape React's batch
+            setTimeout(() => {
+              setIsActive(false);
+              setCompletedMode(mode);
+              setShowCompletionPopup(true);
+              playAlarmSound();
+              timerStartedRef.current = false;
+            }, 0);
+          }
+          return next;
+        });
       }, 1000);
-    } else if (timeLeft === 0) {
-      setIsActive(false);
-      clearInterval(timerRef.current);
     }
-    return () => clearInterval(timerRef.current);
-  }, [isActive, timeLeft]);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, mode]); // Intentionally excludes timeLeft to prevent interval recreation
 
   // Handlers
   const toggleTimer = () => setIsActive(!isActive);
@@ -41,16 +101,26 @@ const FocusStream = () => {
     setTimeLeft(config[mode] * 60);
   };
 
+  const handleCloseCompletionPopup = () => {
+    setShowCompletionPopup(false);
+    setCompletedMode(null);
+  };
+
   const switchMode = (newMode) => {
+    // Prevent switching if timer is currently running (check Ref for latest truth)
+    if (isActiveRef.current) return;
+
+    // Only switch if same mode isn't already selected
+    if (mode === newMode) return;
+
     setMode(newMode);
-    setIsActive(false);
     setTimeLeft(config[newMode] * 60);
   };
 
   const saveSettings = (newFocus, newBreak) => {
     const focusVal = parseInt(newFocus) || 25;
     const breakVal = parseInt(newBreak) || 5;
-    
+
     setConfig({ focus: focusVal, break: breakVal });
     setShowSettings(false);
 
@@ -67,7 +137,7 @@ const FocusStream = () => {
       e.preventDefault();
       const now = new Date();
       const timestamp = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      
+
       const newEntry = {
         id: Date.now(),
         text: inputText,
@@ -75,7 +145,7 @@ const FocusStream = () => {
         sessionType: mode
       };
 
-      setEntries([newEntry, ...entries]); 
+      setEntries([newEntry, ...entries]);
       setInputText('');
     }
   };
@@ -86,9 +156,10 @@ const FocusStream = () => {
     }
   };
 
-  const exportLogs = () => {
-    // Generate file content regardless of entry count
-    const dateStr = new Date().toLocaleDateString();
+  const exportLogs = React.useCallback(() => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString();
+
     let fileContent = `FocusStream Session Log - ${dateStr}\n`;
     fileContent += `=====================================\n\n`;
 
@@ -101,16 +172,34 @@ const FocusStream = () => {
       });
     }
 
-    const blob = new Blob([fileContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `focus-stream-log-${Date.now()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+    try {
+      const filename = `focus-stream-log-${now.toISOString().split('T')[0]}.txt`;
+      // Use File constructor for better metadata support
+      const file = new File([fileContent], filename, { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(file);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename; // This is the hint the browser usually needs
+
+      // Make it visible but tiny (some browsers block hidden clicks)
+      a.style.position = 'fixed';
+      a.style.left = '-9999px';
+      a.style.top = '0';
+      document.body.appendChild(a);
+
+      a.click();
+
+      // Extended timeout to ensure download starts
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 2000);
+    } catch (err) {
+      console.error('[DEBUG] Export error:', err);
+      alert('Export failed: ' + err.message);
+    }
+  }, [entries]);
 
   // Formatting & Progress
   const formatTime = (seconds) => {
@@ -124,7 +213,64 @@ const FocusStream = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-rose-100 selection:text-rose-900 transition-colors duration-500 relative">
-      
+
+      {/* Completion Popup */}
+      {showCompletionPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl scale-100 animate-in zoom-in-95 duration-300 text-center ${completedMode === 'focus' ? 'ring-4 ring-rose-100' : 'ring-4 ring-emerald-100'
+            }`}>
+            {/* Icon */}
+            <div className={`w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center ${completedMode === 'focus'
+              ? 'bg-gradient-to-br from-rose-100 to-orange-100'
+              : 'bg-gradient-to-br from-emerald-100 to-teal-100'
+              }`}>
+              {completedMode === 'focus'
+                ? <Brain size={40} className="text-rose-500" />
+                : <Coffee size={40} className="text-emerald-500" />
+              }
+            </div>
+
+            {/* Title */}
+            <h2 className={`text-2xl font-bold mb-2 ${completedMode === 'focus' ? 'text-rose-600' : 'text-emerald-600'
+              }`}>
+              Time's Up!
+            </h2>
+
+            {/* Message */}
+            <p className="text-slate-600 mb-6">
+              {completedMode === 'focus'
+                ? 'Great focus session! Take a well-deserved break.'
+                : 'Break is over. Ready to focus again?'
+              }
+            </p>
+
+            {/* Actions */}
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  exportLogs();
+                  handleCloseCompletionPopup();
+                }}
+                className="w-full py-3 bg-slate-100 text-slate-700 rounded-xl font-medium hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+              >
+                <Download size={18} />
+                Download Transcript
+              </button>
+
+              <button
+                onClick={handleCloseCompletionPopup}
+                className={`w-full py-3 text-white rounded-xl font-medium transition-colors active:scale-95 transform ${completedMode === 'focus'
+                  ? 'bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-600 hover:to-orange-600'
+                  : 'bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600'
+                  }`}
+              >
+                Got it!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
@@ -135,7 +281,7 @@ const FocusStream = () => {
                 <X size={24} />
               </button>
             </div>
-            
+
             <form onSubmit={(e) => {
               e.preventDefault();
               saveSettings(e.target.focus.value, e.target.break.value);
@@ -143,9 +289,9 @@ const FocusStream = () => {
               <div className="space-y-4 mb-6">
                 <div>
                   <label className="block text-sm font-semibold text-slate-500 mb-2">Focus Duration (minutes)</label>
-                  <input 
+                  <input
                     name="focus"
-                    type="number" 
+                    type="number"
                     defaultValue={config.focus}
                     min="1"
                     max="180"
@@ -154,9 +300,9 @@ const FocusStream = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-slate-500 mb-2">Break Duration (minutes)</label>
-                  <input 
+                  <input
                     name="break"
-                    type="number" 
+                    type="number"
                     defaultValue={config.break}
                     min="1"
                     max="60"
@@ -164,7 +310,7 @@ const FocusStream = () => {
                   />
                 </div>
               </div>
-              <button 
+              <button
                 type="submit"
                 className="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-900 transition-colors active:scale-95 transform"
               >
@@ -181,14 +327,14 @@ const FocusStream = () => {
           FocusStream
         </h1>
         <div className="flex space-x-2">
-          <button 
+          <button
             onClick={() => setShowSettings(true)}
             className="p-2 rounded-full text-slate-600 hover:bg-slate-200 transition-colors"
             title="Settings"
           >
             <Settings size={20} />
           </button>
-          <button 
+          <button
             onClick={exportLogs}
             className="p-2 rounded-full text-slate-600 hover:bg-slate-200 transition-colors"
             title="Export Logs"
@@ -199,12 +345,15 @@ const FocusStream = () => {
       </header>
 
       <main className="max-w-2xl mx-auto p-4 flex flex-col gap-6">
-        
+        <div className="bg-yellow-100 p-2 text-xs font-mono border border-yellow-300 rounded text-center">
+          DEBUG: isActive={isActive.toString()} | Mode={mode} | Time={timeLeft}
+        </div>
+
         {/* Timer Card */}
         <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 p-8 flex flex-col items-center relative overflow-hidden">
           {/* Progress Bar Top */}
           <div className="absolute top-0 left-0 h-1 bg-slate-100 w-full">
-            <div 
+            <div
               className={`h-full transition-all duration-1000 ${mode === 'focus' ? 'bg-rose-500' : 'bg-emerald-500'}`}
               style={{ width: `${progress}%` }}
             />
@@ -214,9 +363,9 @@ const FocusStream = () => {
           <div className="flex bg-slate-100 p-1 rounded-full mb-8">
             <button
               onClick={() => switchMode('focus')}
-              className={`px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-                mode === 'focus' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
+              disabled={isActive}
+              className={`px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${mode === 'focus' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                } ${isActive ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
             >
               <div className="flex items-center gap-2">
                 <Brain size={16} /> Focus
@@ -224,9 +373,9 @@ const FocusStream = () => {
             </button>
             <button
               onClick={() => switchMode('break')}
-              className={`px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-                mode === 'break' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
+              disabled={isActive}
+              className={`px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${mode === 'break' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                } ${isActive ? 'opacity-50 cursor-not-allowed pointer-events-none' : ''}`}
             >
               <div className="flex items-center gap-2">
                 <Coffee size={16} /> Break
@@ -241,18 +390,17 @@ const FocusStream = () => {
 
           {/* Controls */}
           <div className="flex items-center gap-4">
-            <button 
+            <button
               onClick={toggleTimer}
-              className={`h-16 w-16 rounded-2xl flex items-center justify-center text-white shadow-lg transform active:scale-95 transition-all hover:shadow-xl ${
-                mode === 'focus' 
-                  ? 'bg-gradient-to-br from-rose-500 to-orange-500 shadow-rose-200' 
-                  : 'bg-gradient-to-br from-emerald-400 to-teal-500 shadow-emerald-200'
-              }`}
+              className={`h-16 w-16 rounded-2xl flex items-center justify-center text-white shadow-lg transform active:scale-95 transition-all hover:shadow-xl ${mode === 'focus'
+                ? 'bg-gradient-to-br from-rose-500 to-orange-500 shadow-rose-200'
+                : 'bg-gradient-to-br from-emerald-400 to-teal-500 shadow-emerald-200'
+                }`}
             >
               {isActive ? <Pause size={28} fill="currentColor" /> : <Play size={28} fill="currentColor" className="ml-1" />}
             </button>
-            
-            <button 
+
+            <button
               onClick={resetTimer}
               className="h-16 w-16 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors"
             >
@@ -271,7 +419,7 @@ const FocusStream = () => {
             placeholder="Type thought & hit enter..."
             className="w-full bg-white border-none shadow-lg shadow-slate-200/50 rounded-2xl py-5 pl-6 pr-14 text-lg outline-none focus:ring-2 ring-rose-500/20 transition-all placeholder:text-slate-400"
           />
-          <button 
+          <button
             onClick={handleInputSubmit}
             className="absolute right-3 top-3 p-2 bg-slate-100 hover:bg-rose-100 text-slate-400 hover:text-rose-500 rounded-xl transition-colors"
           >
@@ -284,7 +432,7 @@ const FocusStream = () => {
           <div className="flex justify-between items-center mb-4 px-2">
             <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Session Log</h2>
             {entries.length > 0 && (
-              <button 
+              <button
                 onClick={clearEntries}
                 className="text-xs text-rose-400 hover:text-rose-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-rose-50 transition-colors"
               >
@@ -292,7 +440,7 @@ const FocusStream = () => {
               </button>
             )}
           </div>
-          
+
           <div className="space-y-3 pb-8">
             {entries.length === 0 ? (
               <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">
@@ -300,8 +448,8 @@ const FocusStream = () => {
               </div>
             ) : (
               entries.map((entry) => (
-                <div 
-                  key={entry.id} 
+                <div
+                  key={entry.id}
                   className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex gap-4 items-start animate-in fade-in slide-in-from-bottom-4 duration-300"
                 >
                   <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded-md whitespace-nowrap">

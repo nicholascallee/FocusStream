@@ -1,0 +1,57 @@
+# Project Context for FocusStream Pomodoro Timer
+
+## What is the app?
+
+**FocusStream** is a Pomodoro timer built with **React** and **Vite**. It provides a sleek, modern UI for managing focus/break intervals, with features such as:
+- Adjustable work and break durations
+- Visual progress indicator
+- Audio notifications
+- Ability to download session logs
+
+The app follows a clean component‑based architecture and uses Tailwind CSS for styling.
+
+## How to start the app
+
+1. **Install dependencies** (if not already installed):
+   ```bash
+   npm install
+   ```
+2. **Run the development server**:
+   ```bash
+   npm run dev
+   ```
+   This starts Vite on `http://localhost:5173/` (the default URL you are already using).
+3. Open the URL in a browser to see the timer UI.
+
+## File Structure (top‑level)
+```
+pomodoroApp/
+├─ .claude                # <-- This file (project overview)
+├─ .gitignore            # Git ignore rules (node_modules, build output, etc.)
+├─ package.json          # Project metadata & scripts
+├─ postcss.config.js     # PostCSS configuration for Tailwind
+├─ tailwind.config.js    # Tailwind CSS configuration
+├─ vite.config.js        # Vite bundler configuration
+├─ index.html            # Entry HTML file
+├─ src/
+│  ├─ main.jsx          # React entry point, mounts <App/>
+│  ├─ App.jsx           # Main application component (timer logic)
+│  ├─ components/       # Re‑usable UI components (Button, TimerDisplay, etc.)
+│  └─ styles/           # Tailwind / custom CSS files
+├─ public/               # Static assets (icons, images)
+└─ node_modules/         # Installed npm packages (auto‑generated)
+```
+
+## Key source files
+- **src/main.jsx** – Boots the React app and renders `<App />`.
+- **src/App.jsx** – Contains the timer state, mode switching, and UI layout.
+- **src/components/** – Individual UI pieces (e.g., buttons, progress bar).
+- **tailwind.config.js** – Tailwind setup for custom colors, dark mode, etc.
+- **postcss.config.js** – Enables Tailwind as a PostCSS plugin.
+
+## Development notes
+- The app is served by Vite’s dev server; hot‑module replacement (HMR) updates changes instantly.
+- Tailwind CSS provides a modern, responsive design; you can customize the theme in `tailwind.config.js`.
+- To create a production build, run `npm run build` (not required for local development).
+
+---
