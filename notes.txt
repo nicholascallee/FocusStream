@@ -1,0 +1,25 @@
+
+skills:
+
+my dev made this, tell me what you think of the plan and provide insights on what could be done better
+create a plan to do x
+Act as a Senior Developer and review the solution presented in [prompt] and tell me if its the best way to solve the issue. if there are any flaws and or better ways to create the solution then provide them to me.
+
+todo:
+make a webpage displaying my ai and automation centered resume
+make a webapp that just converts a photo with text to the text output.
+
+
+
+pending fixes for focusstream:
+pressing play after a timer is finished should restart the timer
+refreshing the page should not reset the timer settings
+each log entry should have a trashcan button on the right side to delete it
+
+
+
+to get n8n summarizer working:
+need to make the js file point to a filesystem location within the docker container. it will be linked as a volume in the docker compose. but i somehow need to unzip it and possibly tar it or whatever it is for Linux. i also need to figure out youtube script downloader installation. 
+the js script should be modified to output the transcript to the console.
+
+should just be a js script followed by an ai that will summarize, followed by a discord poster(maybe same discordcli?)
