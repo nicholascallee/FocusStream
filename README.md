@@ -2,7 +2,7 @@
 
 **FocusStream** is a beautifully designed Pomodoro timer application that helps you maintain focus and productivity through structured work sessions. Built with React and featuring a modern, dark-mode interface with smooth animations and glassmorphism effects, FocusStream combines aesthetic appeal with powerful functionality.
 
-![FocusStream Focus Mode](C:/Users/nicka_qw9tenq/.gemini/antigravity/brain/52184e27-b2a7-4112-bf1c-fa0b4258afb8/initial_focus_mode_1766245682269.png)
+![FocusStream Focus Mode](images/focus_mode.png)
 
 ## Features
 
@@ -61,19 +61,19 @@
 3. **Log Your Work**: Use the input field at the bottom to add notes during your session
 4. **Stay Focused**: The timer will run until completion, with buttons locked to prevent accidents
 
-![Session with Logs](C:/Users/nicka_qw9tenq/.gemini/antigravity/brain/52184e27-b2a7-4112-bf1c-fa0b4258afb8/log_entry_visible_1766245737686.png)
+![Session with Logs](images/session_log.png)
 
 ### Break Time
 
 Switch to **Break Mode** for shorter, refreshing intervals. The interface changes to a calming green theme to help you relax.
 
-![Break Mode](C:/Users/nicka_qw9tenq/.gemini/antigravity/brain/52184e27-b2a7-4112-bf1c-fa0b4258afb8/break_mode_active_1766245757131.png)
+![Break Mode](images/break_mode.png)
 
 ### Customizing Timer Durations
 
 Click the ⚙️ **Settings** icon in the header to customize your focus and break durations. Changes are saved to localStorage and persist across sessions.
 
-![Settings Modal](C:/Users/nicka_qw9tenq/.gemini/antigravity/brain/52184e27-b2a7-4112-bf1c-fa0b4258afb8/settings_modal_open_1766245769781.png)
+![Settings Modal](images/settings.png)
 
 ---
 
